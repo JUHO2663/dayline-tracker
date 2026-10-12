@@ -128,6 +128,23 @@ for (const [label, make] of Object.entries(stores)) {
   });
 }
 
+describe('change notifications', () => {
+  it('reports touched tables after a successful write', async () => {
+    const db = await initialize(new MemoryRecordStore(), 'passphrase', IT);
+    const seen: string[][] = [];
+    const unsubscribe = db.subscribe((tables) => seen.push([...tables].sort()));
+
+    await db.batch((b) => {
+      b.put('medications', medication('m1', 'A'));
+      b.put('dose_logs', doseLog('m1', '2026-10-12T09:00'));
+    });
+    unsubscribe();
+    await db.put('medications', medication('m2', 'B'));
+
+    expect(seen).toEqual([['dose_logs', 'medications']]);
+  });
+});
+
 describe('tamper detection', () => {
   it('fails when a ciphertext is moved to another id', async () => {
     const store = new MemoryRecordStore();

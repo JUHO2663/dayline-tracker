@@ -15,6 +15,8 @@ export interface Batch {
   remove(table: TableName, ...ids: string[]): void;
 }
 
+export type ChangeListener = (tables: ReadonlySet<TableName>) => void;
+
 /**
  * Encrypted document database shared by every platform.
  *
@@ -25,6 +27,7 @@ export interface Batch {
 export class Database {
   private readonly tables = new Map<TableName, Promise<Map<string, unknown>>>();
   private writes: Promise<unknown> = Promise.resolve();
+  private readonly listeners = new Set<ChangeListener>();
 
   constructor(
     private readonly store: RecordStore,
@@ -44,6 +47,12 @@ export class Database {
       this.tables.set(table, loading);
     }
     return loading as Promise<Table<K>>;
+  }
+
+  /** Called after every successful write with the tables it touched. Returns an unsubscribe function. */
+  subscribe(listener: ChangeListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
   }
 
   async all<K extends TableName>(table: K): Promise<Row<K>[]> {
@@ -125,6 +134,7 @@ export class Database {
     for (const { table, id } of removes) {
       (await this.tables.get(table)!).delete(id);
     }
+    for (const listener of this.listeners) listener(touched);
   }
 
   /** Drops decrypted data from memory. The Database must not be used afterwards. */

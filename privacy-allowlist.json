@@ -6,6 +6,7 @@
     "idb": "Thin promise wrapper around IndexedDB (web storage). No network code.",
     "@capacitor/core": "Native bridge runtime",
     "@capacitor-community/sqlite": "Local SQLite on Android. Stores ciphertext only.",
+    "@capacitor/local-notifications": "On-device scheduled notifications (no push server). Reviewed: no network code in web or Android sources.",
     "@capacitor/cli": "Build tooling (dev only)",
     "@types/react": "Types (dev only)",
     "@types/react-dom": "Types (dev only)",

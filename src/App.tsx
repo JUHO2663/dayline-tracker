@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DbContext } from './app/DbContext';
+import { DbContext, useDb } from './app/DbContext';
 import { isInitialized, openRecordStore, type Database } from './db';
 import type { RecordStore } from './db/recordStore';
+import type { TableName } from './db/types';
 import { LockScreen } from './features/lock/LockScreen';
+import { MedicationsScreen } from './features/medications/MedicationsScreen';
+import { syncDoseReminders } from './services/notifications';
 
 type State =
   | { kind: 'loading' }
   | { kind: 'error' }
   | { kind: 'locked'; store: RecordStore; mode: 'setup' | 'unlock' }
   | { kind: 'unlocked'; store: RecordStore; db: Database };
-
-const SECTIONS = ['투약', '검사', '일지', '일정', '설정'] as const;
 
 export function App() {
   const [state, setState] = useState<State>({ kind: 'loading' });
@@ -50,20 +51,63 @@ export function App() {
 
   return (
     <DbContext.Provider value={ctx}>
+      <UnlockedApp />
+    </DbContext.Provider>
+  );
+}
+
+const TABS = [
+  { id: 'meds', label: '투약' },
+  { id: 'labs', label: '검사' },
+  { id: 'journal', label: '일지' },
+  { id: 'appointments', label: '일정' },
+  { id: 'settings', label: '설정' },
+] as const;
+
+type TabId = (typeof TABS)[number]['id'];
+
+/** Tables whose changes affect which dose reminders should be scheduled. */
+const REMINDER_INPUTS: TableName[] = ['medications', 'dose_logs', 'settings'];
+
+function UnlockedApp() {
+  const { db, lock } = useDb();
+  const [tab, setTab] = useState<TabId>('meds');
+
+  useEffect(() => {
+    const sync = () => void syncDoseReminders(db).catch(() => undefined);
+    sync();
+    return db.subscribe((tables) => {
+      if (REMINDER_INPUTS.some((t) => tables.has(t))) sync();
+    });
+  }, [db]);
+
+  return (
+    <>
       <header className="topbar">
         <span>Dayline</span>
-        <button type="button" onClick={ctx!.lock}>
+        <button type="button" onClick={lock}>
           잠그기
         </button>
       </header>
-      <main className="placeholder">
-        <p>저장소와 암호화가 준비됐어요. 각 화면은 다음 단계에서 만들어요.</p>
+      <main className="content">
+        {tab === 'meds' ? (
+          <MedicationsScreen />
+        ) : (
+          <p className="muted screen">다음 단계에서 만들어요.</p>
+        )}
       </main>
-      <nav className="tabbar">
-        {SECTIONS.map((s) => (
-          <span key={s}>{s}</span>
+      <nav className="tabbar" aria-label="메뉴">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            aria-current={tab === t.id ? 'page' : undefined}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
         ))}
       </nav>
-    </DbContext.Provider>
+    </>
   );
 }
