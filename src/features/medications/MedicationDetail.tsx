@@ -7,7 +7,7 @@ import { datePart, formatDate, timePart, today } from '../../utils/time';
 import { countByStatus, medicationHistory, recordDose, undoDose, type HistoryStatus } from './doses';
 import { DoseRow, groupByDate } from './DoseRow';
 import { FORM_LABELS } from './MedicationForm';
-import { describeSchedule } from './schedule';
+import { describeSchedule, MAX_DAYS } from './schedule';
 
 const PAGE = 60;
 
@@ -33,7 +33,7 @@ export function MedicationDetail({ med, onBack, onEdit }: Props) {
 
   if (!logs) return null;
 
-  const { from, to } = resolvePeriod(period, todayDate);
+  const { from, to } = resolvePeriod(period, todayDate, MAX_DAYS);
   const entries = medicationHistory(med, logs, from, to, now);
   const counts = countByStatus(entries);
   const shown = entries.slice(0, limit);
@@ -82,6 +82,7 @@ export function MedicationDetail({ med, onBack, onEdit }: Props) {
             setLimit(PAGE);
           }}
           end={todayDate}
+          maxDays={MAX_DAYS}
         />
         <p className="counts">
           <span>체크 {counts.taken}</span>

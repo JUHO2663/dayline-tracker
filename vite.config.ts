@@ -36,6 +36,8 @@ export default defineConfig({
   plugins: [react(), cspPlugin()],
   build: {
     sourcemap: false,
+    // The polyfill fetch()es our own chunks; every supported WebView has native modulepreload.
+    modulePreload: { polyfill: false },
   },
   test: {
     environment: 'node',

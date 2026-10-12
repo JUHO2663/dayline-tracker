@@ -7,6 +7,8 @@
     "@capacitor/core": "Native bridge runtime",
     "@capacitor-community/sqlite": "Local SQLite on Android. Stores ciphertext only.",
     "@capacitor/local-notifications": "On-device scheduled notifications (no push server). Reviewed: no network code in web or Android sources.",
+    "recharts": "Lab trend charts. Reviewed: no network code in recharts or its runtime deps (RTK Query's fetch module is never imported).",
+    "react-is": "Peer dependency of recharts",
     "@capacitor/cli": "Build tooling (dev only)",
     "@types/react": "Types (dev only)",
     "@types/react-dom": "Types (dev only)",

@@ -15,7 +15,7 @@ import { agendaFor, findMissed, recordDose, undoDose } from './doses';
 import { DoseRow, groupByDate } from './DoseRow';
 import { MedicationDetail } from './MedicationDetail';
 import { FORM_LABELS, MedicationForm } from './MedicationForm';
-import { describeSchedule } from './schedule';
+import { describeSchedule, MAX_DAYS } from './schedule';
 
 type View =
   | { kind: 'overview' }
@@ -86,7 +86,7 @@ function Overview({ meds, onOpen, onAdd }: OverviewProps) {
 
   const nowDt = toLocalDateTime(now);
   const agenda = agendaFor(meds, logs, todayDate);
-  const { from, to } = resolvePeriod(period, yesterday);
+  const { from, to } = resolvePeriod(period, yesterday, MAX_DAYS);
   const missed = findMissed(meds, logs, from, to);
   const active = meds.filter((m) => m.active).sort((a, b) => a.name.localeCompare(b.name));
   const inactive = meds.filter((m) => !m.active).sort((a, b) => a.name.localeCompare(b.name));
@@ -133,6 +133,7 @@ function Overview({ meds, onOpen, onAdd }: OverviewProps) {
               setMissedLimit(MISSED_PAGE);
             }}
             end={yesterday}
+            maxDays={MAX_DAYS}
           />
           {missed.length === 0 ? (
             <p className="muted">이 기간에 놓친 기록이 없어요.</p>

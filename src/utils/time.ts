@@ -69,8 +69,8 @@ export function weekdayLabel(isoDay: number): string {
   return WEEKDAY_LABELS[isoDay - 1] ?? '';
 }
 
-/** e.g. "10월 13일 (화)" */
-export function formatDate(date: LocalDate): string {
-  const [, m, d] = date.split('-').map(Number);
-  return `${m}월 ${d}일 (${weekdayLabel(isoWeekday(date))})`;
+/** e.g. "10월 13일 (화)", or "2026년 10월 13일 (화)" with year. */
+export function formatDate(date: LocalDate, withYear = false): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return `${withYear ? `${y}년 ` : ''}${m}월 ${d}일 (${weekdayLabel(isoWeekday(date))})`;
 }

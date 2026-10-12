@@ -90,3 +90,6 @@ export function validateSchedule(schedule: Schedule): string | null {
   }
   return null;
 }
+
+/** Schedules are expanded day by day, so period pickers over them are capped at a year. */
+export const MAX_DAYS = 366;

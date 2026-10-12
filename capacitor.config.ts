@@ -10,6 +10,11 @@ const config: CapacitorConfig = {
     // Disallow loading http:// content inside the app.
     allowMixedContent: false,
   },
+  plugins: {
+    // Native HTTP/cookie bridges stay off: the app makes no network requests.
+    CapacitorHttp: { enabled: false },
+    CapacitorCookies: { enabled: false },
+  },
 };
 
 export default config;

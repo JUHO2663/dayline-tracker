@@ -87,6 +87,26 @@ CREATE TABLE meta    (key TEXT PRIMARY KEY, value TEXT);
 - Android 알림 채널은 잠금 화면에서 내용을 숨기는 `private`로 만들어요.
 - 웹에서는 브라우저의 Notification API를 쓰기 때문에, 탭이 열려 있을 때만 알림이 와요.
 
+## 혈액검사 기록 / Lab results
+
+- 항목(`lab_items`)은 사용자가 자유롭게 만들어요. 이름은 대소문자를 구분하지 않고 중복을 막아요.
+- 검사 1회(`lab_sessions`)에 여러 결과(`lab_results`)가 들어가요. 새 검사를 추가할 때는 직전 검사의 항목과 단위를 미리 채워 주고, 값을 비워 둔 줄은 저장하지 않아요.
+- `<20`, `>1000`처럼 부등호가 붙은 값은 `comparator`로 저장해요. 그래프에서는 적힌 숫자 위치에 속이 빈 점으로 표시해요.
+- **판단하지 않아요.** 참고범위, 정상/비정상 표시, 색으로 높고 낮음을 나타내는 기능, 단위 변환이 없어요. 단위가 다른 값은 그래프를 따로 그려요.
+- 그래프(Recharts)는 값이 2개 이상일 때만 그려요. 차트 색은 라이트/다크 모드 각각 대비 검사를 통과한 값을 써요. 모든 값은 그래프 아래 목록에서도 볼 수 있어요.
+- 차트 라이브러리는 검사 탭을 열 때만 불러와요(코드 분할).
+
+## 네트워크 차단 / Network isolation
+
+여러 겹으로 막아요.
+
+1. **소스 검사**: `npm run privacy-check`가 앱 코드의 네트워크 API와 원격 URL, 허용 목록에 없는 의존성을 찾아내요.
+2. **CSP**: 빌드에 `connect-src 'self'`가 들어가서, 라이브러리 안에 통신 코드가 있더라도 브라우저가 외부 요청을 막아요.
+3. **Capacitor 설정**: `CapacitorHttp`와 `CapacitorCookies`를 끄고, `server.url`을 쓰지 않아요. 참고로 `@capacitor/core`에는 `CapacitorHttp`의 웹 구현(fetch)이 포함되어 있지만, 호출하지 않으면 실행되지 않고 CSP에도 막혀요.
+4. **Android 권한**: 릴리스 빌드에서 `INTERNET` 권한을 빼요(6단계).
+
+Vite의 modulepreload 폴리필은 꺼 두었어요. 이 폴리필은 앱 자신의 파일을 fetch로 미리 받아 오는데, 지원 대상 WebView에는 필요 없어요.
+
 ## 위협 모델 / Threat model
 
 **보호하는 것**

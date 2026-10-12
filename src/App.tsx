@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { DbContext, useDb } from './app/DbContext';
 import { isInitialized, openRecordStore, type Database } from './db';
 import type { RecordStore } from './db/recordStore';
@@ -6,6 +6,9 @@ import type { TableName } from './db/types';
 import { LockScreen } from './features/lock/LockScreen';
 import { MedicationsScreen } from './features/medications/MedicationsScreen';
 import { syncDoseReminders } from './services/notifications';
+
+// The chart library is large; load it only when the labs tab is opened.
+const LabsScreen = lazy(() => import('./features/labs/LabsScreen').then((m) => ({ default: m.LabsScreen })));
 
 type State =
   | { kind: 'loading' }
@@ -92,6 +95,10 @@ function UnlockedApp() {
       <main className="content">
         {tab === 'meds' ? (
           <MedicationsScreen />
+        ) : tab === 'labs' ? (
+          <Suspense fallback={null}>
+            <LabsScreen />
+          </Suspense>
         ) : (
           <p className="muted screen">다음 단계에서 만들어요.</p>
         )}

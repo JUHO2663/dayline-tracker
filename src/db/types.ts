@@ -112,6 +112,9 @@ export interface LabSession {
   createdAt: Timestamp;
 }
 
+/** For values reported as "<20" or ">1000" (e.g. below a lab's reporting limit). */
+export type LabComparator = '<' | '>';
+
 /**
  * id = labResultId(sessionId, itemId): one value per item per session.
  * The unit is stored per result; values with different units are never converted.
@@ -121,6 +124,7 @@ export interface LabResult {
   sessionId: string;
   itemId: string;
   value: number;
+  comparator?: LabComparator;
   unit: string;
 }
 
