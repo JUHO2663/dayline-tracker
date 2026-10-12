@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agendaFor, findMissed, makeDoseLog } from './doses';
+import { agendaFor, countByStatus, findMissed, makeDoseLog, medicationHistory } from './doses';
 import { planDoseReminders } from './notificationPlan';
 import { med } from './testUtils';
 
@@ -13,11 +13,12 @@ describe('agenda and missed', () => {
     expect(agenda[0]!.log).toEqual(log);
   });
 
-  it('derives missed doses from earlier days only, newest first', () => {
+  it('derives missed doses within a range, newest first', () => {
     const logs = [makeDoseLog(daily9, '2026-10-11T09:00', 'skipped')];
-    const missed = findMissed([daily9], logs, '2026-10-13');
-    // 10-10 and 10-12 unlogged; 10-11 skipped (not missed); today excluded; nothing before start.
+    const missed = findMissed([daily9], logs, '2026-10-01', '2026-10-12');
+    // 10-10 and 10-12 unlogged; 10-11 skipped (not missed); nothing before start.
     expect(missed.map((m) => m.scheduledAt)).toEqual(['2026-10-12T09:00', '2026-10-10T09:00']);
+    expect(findMissed([daily9], logs, '2026-10-12', '2026-10-12')).toHaveLength(1);
   });
 
   it('records the actual time only when checking on the same day', () => {
@@ -30,6 +31,37 @@ describe('agenda and missed', () => {
   it('snapshots dose and unit', () => {
     const log = makeDoseLog({ ...daily9, dose: 4, unit: 'mL' }, '2026-10-13T09:00', 'taken');
     expect(log).toMatchObject({ doseSnapshot: 4, unitSnapshot: 'mL' });
+  });
+});
+
+describe('medicationHistory', () => {
+  const now = new Date(2026, 9, 13, 12, 0);
+  const twice = med('a', { type: 'daily', times: ['09:00', '21:00'] }, { startDate: '2026-10-12' });
+
+  it('labels every occurrence, newest first', () => {
+    const logs = [
+      makeDoseLog(twice, '2026-10-12T09:00', 'taken', now),
+      makeDoseLog(twice, '2026-10-12T21:00', 'skipped', now),
+    ];
+    const history = medicationHistory(twice, logs, '2026-10-01', '2026-10-13', now);
+    expect(history.map((h) => [h.scheduledAt, h.status])).toEqual([
+      ['2026-10-13T21:00', 'upcoming'],
+      ['2026-10-13T09:00', 'overdue'],
+      ['2026-10-12T21:00', 'skipped'],
+      ['2026-10-12T09:00', 'taken'],
+    ]);
+    expect(countByStatus(history)).toMatchObject({ taken: 1, skipped: 1, missed: 0, overdue: 1 });
+  });
+
+  it('keeps logs whose time no longer matches the schedule', () => {
+    const orphan = makeDoseLog(twice, '2026-10-12T08:30', 'taken', now);
+    const other = makeDoseLog(med('b', { type: 'daily', times: ['09:00'] }), '2026-10-12T09:00', 'taken', now);
+    const history = medicationHistory(twice, [orphan, other], '2026-10-12', '2026-10-12', now);
+    expect(history.map((h) => [h.scheduledAt, h.status])).toEqual([
+      ['2026-10-12T21:00', 'missed'],
+      ['2026-10-12T09:00', 'missed'],
+      ['2026-10-12T08:30', 'taken'],
+    ]);
   });
 });
 

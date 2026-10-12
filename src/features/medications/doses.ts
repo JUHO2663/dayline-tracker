@@ -7,7 +7,7 @@ import {
   type LocalDateTime,
   type Medication,
 } from '../../db/types';
-import { addDays, datePart, toLocalDateTime, today } from '../../utils/time';
+import { datePart, toLocalDateTime, today } from '../../utils/time';
 import { occurrencesBetween, occurrencesOn } from './schedule';
 
 export interface DoseItem {
@@ -39,18 +39,16 @@ export function agendaFor(meds: Medication[], logs: DoseLog[], date: LocalDate):
 }
 
 /**
- * Occurrences on the previous `days` days (not today) that were never checked or skipped.
+ * Occurrences between `from` and `to` (inclusive) that were never checked or skipped.
  * Missed doses are derived, never stored. Newest first.
  */
 export function findMissed(
   meds: Medication[],
   logs: DoseLog[],
-  todayDate: LocalDate,
-  days = 7,
+  from: LocalDate,
+  to: LocalDate,
 ): DoseItem[] {
   const byId = indexLogs(logs);
-  const from = addDays(todayDate, -days);
-  const to = addDays(todayDate, -1);
   return meds
     .flatMap((med) =>
       occurrencesBetween(med, from, to)
@@ -58,6 +56,70 @@ export function findMissed(
         .map((scheduledAt) => ({ med, scheduledAt })),
     )
     .sort((a, b) => -byTimeThenName(a, b));
+}
+
+/**
+ * - taken / skipped: logged
+ * - missed: unlogged, on an earlier day
+ * - overdue: unlogged, earlier today
+ * - upcoming: later today
+ */
+export type HistoryStatus = DoseStatus | 'missed' | 'overdue' | 'upcoming';
+
+export interface HistoryEntry {
+  scheduledAt: LocalDateTime;
+  status: HistoryStatus;
+  log?: DoseLog;
+}
+
+/**
+ * One medication's record for a period, newest first. Includes logs that no longer
+ * match the schedule (e.g. a time that was changed later), so nothing checked is hidden.
+ */
+export function medicationHistory(
+  med: Medication,
+  logs: DoseLog[],
+  from: LocalDate,
+  to: LocalDate,
+  now = new Date(),
+): HistoryEntry[] {
+  const todayDate = today(now);
+  const nowDt = toLocalDateTime(now);
+  const last = to < todayDate ? to : todayDate;
+  const own = logs.filter((l) => l.medicationId === med.id);
+  const byAt = new Map(own.map((l) => [l.scheduledAt, l]));
+
+  const entries = new Map<LocalDateTime, HistoryEntry>();
+  for (const at of occurrencesBetween(med, from, last)) {
+    const log = byAt.get(at);
+    const status: HistoryStatus = log
+      ? log.status
+      : datePart(at) < todayDate
+        ? 'missed'
+        : at < nowDt
+          ? 'overdue'
+          : 'upcoming';
+    entries.set(at, log ? { scheduledAt: at, status, log } : { scheduledAt: at, status });
+  }
+  for (const log of own) {
+    const d = datePart(log.scheduledAt);
+    if (d >= from && d <= last && !entries.has(log.scheduledAt)) {
+      entries.set(log.scheduledAt, { scheduledAt: log.scheduledAt, status: log.status, log });
+    }
+  }
+  return [...entries.values()].sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt));
+}
+
+export function countByStatus(entries: HistoryEntry[]): Record<HistoryStatus, number> {
+  const counts: Record<HistoryStatus, number> = {
+    taken: 0,
+    skipped: 0,
+    missed: 0,
+    overdue: 0,
+    upcoming: 0,
+  };
+  for (const e of entries) counts[e.status]++;
+  return counts;
 }
 
 /**

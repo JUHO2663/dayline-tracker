@@ -26,8 +26,27 @@ export type Schedule =
   | { type: 'daily'; times: LocalTime[] }
   /** weekdays: 1 = Monday … 7 = Sunday */
   | { type: 'weekly'; weekdays: number[]; times: LocalTime[] }
-  | { type: 'interval'; everyDays: number; times: LocalTime[] };
+  /** anchor: any date on which a dose falls; others are every `everyDays` days from it. */
+  | { type: 'interval'; everyDays: number; anchor: LocalDate; times: LocalTime[] };
 
+/**
+ * A past stretch of time and the schedule that applied (null = paused).
+ * Lets past days keep being evaluated against the schedule that was in effect then.
+ */
+export interface SchedulePeriod {
+  from: LocalDate;
+  to: LocalDate;
+  schedule: Schedule | null;
+}
+
+/**
+ * Which schedule applies on a date:
+ * - before startDate / after endDate: none
+ * - inactive and on/after inactiveFrom: none
+ * - on/after scheduleFrom: `schedule`
+ * - earlier: the matching `scheduleHistory` period, if any
+ * See src/features/medications/medicationOps.ts for how these fields change.
+ */
 export interface Medication {
   id: string;
   name: string;
@@ -36,10 +55,15 @@ export interface Medication {
   /** Free text: mg, mL, pump, … */
   unit: string;
   schedule: Schedule;
+  scheduleFrom: LocalDate;
+  /** Oldest first, non-overlapping, all before scheduleFrom. */
+  scheduleHistory: SchedulePeriod[];
   startDate: LocalDate;
   endDate?: LocalDate;
   notify: boolean;
   active: boolean;
+  /** Set while inactive: the first day without doses. */
+  inactiveFrom?: LocalDate;
   memo?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;

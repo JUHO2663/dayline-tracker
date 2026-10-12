@@ -71,7 +71,11 @@ CREATE TABLE meta    (key TEXT PRIMARY KEY, value TEXT);
 ## 투약 일정과 알림 / Schedules and reminders
 
 - 주기 계산은 순수 함수(`src/features/medications/schedule.ts`)로 되어 있어요. 날짜 계산은 `YYYY-MM-DD` 문자열을 UTC 기준으로 다뤄서 서머타임에 영향을 받지 않아요.
-- `interval`(N일마다)은 시작일을 기준으로 계산해요.
+- `interval`(N일마다)은 사용자가 정한 기준일(`anchor`)부터 N일 간격으로 계산해요.
+- **날짜마다 그때 적용되던 주기로 계산해요.** `Medication.scheduleHistory`에 지난 주기와 사용 중지 기간을 보관하고, `scheduleOn(med, date)`가 그 날짜의 주기를 찾아요. 상태 변경 규칙은 `medicationOps.ts`에 있어요.
+  - 주기를 바꿀 때 바꾸기 전의 주기가 이미 지난 날짜에 적용됐다면, 사용자에게 **유지**(지난 날짜는 이전 주기로 계속 계산)와 **삭제**(해당 약의 체크 기록을 지우고 오늘부터 새로 시작) 중에 고르게 해요.
+  - 사용 중지 기간은 '쉼'으로 기록돼서 놓친 기록으로 세지 않아요.
+- 약별 기록 화면은 기간 안의 예정 시각과 기록을 합쳐서 보여줘요. 나중에 시간이 바뀌어 주기와 맞지 않게 된 기록도 숨기지 않아요.
 - 오늘 이전 날짜의 체크 기록에는 실제 체크 시각(`takenAt`)을 남기지 않아요. 나중에 체크하면 실제 시각을 알 수 없기 때문이에요.
 
 알림(`src/services/notifications.ts`)은 기기 안에서만 예약해요. 푸시 서버는 쓰지 않아요.

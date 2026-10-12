@@ -20,6 +20,8 @@ function medication(id: string, name: string): Medication {
     dose: 2,
     unit: 'mg',
     schedule: { type: 'daily', times: ['09:00'] },
+    scheduleFrom: '2026-10-01',
+    scheduleHistory: [],
     startDate: '2026-10-01',
     notify: true,
     active: true,

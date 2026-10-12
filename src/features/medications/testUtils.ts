@@ -1,6 +1,7 @@
 import type { Medication, Schedule } from '../../db/types';
 
 export function med(id: string, schedule: Schedule, overrides: Partial<Medication> = {}): Medication {
+  const startDate = overrides.startDate ?? '2026-10-01';
   return {
     id,
     name: `Item ${id}`,
@@ -8,7 +9,9 @@ export function med(id: string, schedule: Schedule, overrides: Partial<Medicatio
     dose: 1,
     unit: 'mg',
     schedule,
-    startDate: '2026-10-01',
+    scheduleFrom: startDate,
+    scheduleHistory: [],
+    startDate,
     notify: true,
     active: true,
     createdAt: '2026-10-01T00:00:00.000Z',

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useDb } from '../../app/DbContext';
 import { useNow, useTable } from '../../app/hooks';
+import { PeriodPicker, resolvePeriod, usePeriod } from '../../components/PeriodPicker';
 import type { DoseLog, Medication } from '../../db/types';
 import {
   getPermission,
@@ -9,37 +10,84 @@ import {
   syncDoseReminders,
   type PermissionState,
 } from '../../services/notifications';
-import { formatDate, timePart, toLocalDateTime, today } from '../../utils/time';
-import { agendaFor, findMissed, recordDose, undoDose, type DoseItem } from './doses';
+import { addDays, datePart, formatDate, timePart, toLocalDateTime, today } from '../../utils/time';
+import { agendaFor, findMissed, recordDose, undoDose } from './doses';
+import { DoseRow, groupByDate } from './DoseRow';
+import { MedicationDetail } from './MedicationDetail';
 import { FORM_LABELS, MedicationForm } from './MedicationForm';
 import { describeSchedule } from './schedule';
 
-const MISSED_DAYS = 7;
+type View =
+  | { kind: 'overview' }
+  | { kind: 'detail'; id: string }
+  | { kind: 'edit'; id: string | null; back: View };
 
 export function MedicationsScreen() {
-  const [editing, setEditing] = useState<Medication | 'new' | null>(null);
-  if (editing) {
+  const meds = useTable('medications');
+  const [view, setView] = useState<View>({ kind: 'overview' });
+  const overview: View = { kind: 'overview' };
+
+  if (!meds) return null;
+  const find = (id: string) => meds.find((m) => m.id === id);
+
+  if (view.kind === 'edit') {
+    const med = view.id ? find(view.id) : undefined;
     return (
       <MedicationForm
-        medication={editing === 'new' ? undefined : editing}
-        onDone={() => setEditing(null)}
+        key={view.id ?? 'new'}
+        medication={med}
+        onDone={(saved) => setView(saved ? { kind: 'detail', id: saved.id } : view.back)}
+        onDeleted={() => setView(overview)}
       />
     );
   }
-  return <Overview onEdit={setEditing} />;
+
+  if (view.kind === 'detail') {
+    const med = find(view.id);
+    if (med) {
+      return (
+        <MedicationDetail
+          med={med}
+          onBack={() => setView(overview)}
+          onEdit={() => setView({ kind: 'edit', id: med.id, back: view })}
+        />
+      );
+    }
+  }
+
+  return (
+    <Overview
+      meds={meds}
+      onOpen={(m) => setView({ kind: 'detail', id: m.id })}
+      onAdd={() => setView({ kind: 'edit', id: null, back: overview })}
+    />
+  );
 }
 
-function Overview({ onEdit }: { onEdit: (m: Medication | 'new') => void }) {
-  const meds = useTable('medications');
+const MISSED_PAGE = 20;
+
+interface OverviewProps {
+  meds: Medication[];
+  onOpen: (m: Medication) => void;
+  onAdd: () => void;
+}
+
+function Overview({ meds, onOpen, onAdd }: OverviewProps) {
+  const { db } = useDb();
   const logs = useTable('dose_logs');
   const now = useNow();
+  const todayDate = today(now);
+  const yesterday = addDays(todayDate, -1);
+  const [period, setPeriod] = usePeriod(yesterday);
+  const [missedLimit, setMissedLimit] = useState(MISSED_PAGE);
   const undo = useUndo();
 
-  if (!meds || !logs) return null;
+  if (!logs) return null;
 
-  const todayDate = today(now);
+  const nowDt = toLocalDateTime(now);
   const agenda = agendaFor(meds, logs, todayDate);
-  const missed = findMissed(meds, logs, todayDate, MISSED_DAYS);
+  const { from, to } = resolvePeriod(period, yesterday);
+  const missed = findMissed(meds, logs, from, to);
   const active = meds.filter((m) => m.active).sort((a, b) => a.name.localeCompare(b.name));
   const inactive = meds.filter((m) => !m.active).sort((a, b) => a.name.localeCompare(b.name));
 
@@ -53,29 +101,99 @@ function Overview({ onEdit }: { onEdit: (m: Medication | 'new') => void }) {
           <p className="muted">오늘 예정된 항목이 없어요.</p>
         ) : (
           <ul className="list">
-            {agenda.map((item) => (
-              <DoseRow key={`${item.med.id}@${item.scheduledAt}`} item={item} nowDt={toLocalDateTime(now)} />
-            ))}
+            {agenda.map(({ med, scheduledAt, log }) => {
+              const when = timePart(scheduledAt);
+              return (
+                <DoseRow
+                  key={`${med.id}@${scheduledAt}`}
+                  when={when}
+                  title={med.name}
+                  subtitle={log ? `${log.doseSnapshot}${log.unitSnapshot}` : `${med.dose}${med.unit}`}
+                  tag={!log && scheduledAt < nowDt ? '지남' : undefined}
+                  log={log}
+                  accessibleName={`${med.name} ${when}`}
+                  onRecord={(status) => void recordDose(db, med, scheduledAt, status)}
+                  onUndo={(l) => void undoDose(db, l)}
+                />
+              );
+            })}
           </ul>
         )}
       </section>
 
-      {missed.length > 0 && (
+      {meds.length > 0 && (
         <section className="section">
-          <h2>놓친 기록 · 최근 {MISSED_DAYS}일</h2>
-          <ul className="list">
-            {missed.map((item) => (
-              <DoseRow
-                key={`${item.med.id}@${item.scheduledAt}`}
-                item={item}
-                showDate
-                // Logged rows leave this list, so offer a short-lived undo instead.
-                onRecorded={undo.offer}
-              />
-            ))}
-          </ul>
+          <h2>
+            놓친 기록 <span className="muted">{missed.length}건</span>
+          </h2>
+          <PeriodPicker
+            value={period}
+            onChange={(v) => {
+              setPeriod(v);
+              setMissedLimit(MISSED_PAGE);
+            }}
+            end={yesterday}
+          />
+          {missed.length === 0 ? (
+            <p className="muted">이 기간에 놓친 기록이 없어요.</p>
+          ) : (
+            groupByDate(missed.slice(0, missedLimit), (m) => datePart(m.scheduledAt)).map(
+              ([date, items]) => (
+                <div key={date} className="day-group">
+                  <h3 className="muted">{formatDate(date)}</h3>
+                  <ul className="list">
+                    {items.map(({ med, scheduledAt }) => {
+                      const when = timePart(scheduledAt);
+                      return (
+                        <DoseRow
+                          key={`${med.id}@${scheduledAt}`}
+                          when={when}
+                          title={med.name}
+                          subtitle={`${med.dose}${med.unit}`}
+                          accessibleName={`${med.name} ${formatDate(date)} ${when}`}
+                          // Logged rows leave this list, so offer a short-lived undo.
+                          onRecord={async (status) => undo.offer(await recordDose(db, med, scheduledAt, status))}
+                          onUndo={() => undefined}
+                        />
+                      );
+                    })}
+                  </ul>
+                </div>
+              ),
+            )
+          )}
+          {missed.length > missedLimit && (
+            <button type="button" className="ghost" onClick={() => setMissedLimit((l) => l + MISSED_PAGE)}>
+              더 보기 ({missed.length - missedLimit}건)
+            </button>
+          )}
         </section>
       )}
+
+      <section className="section">
+        <div className="section-header">
+          <h2>등록된 항목</h2>
+          <button type="button" className="primary small" onClick={onAdd}>
+            + 추가
+          </button>
+        </div>
+        {active.length === 0 && <p className="muted">아직 등록된 항목이 없어요.</p>}
+        <ul className="list">
+          {active.map((m) => (
+            <MedicationRow key={m.id} med={m} onClick={() => onOpen(m)} />
+          ))}
+        </ul>
+        {inactive.length > 0 && (
+          <>
+            <h3 className="muted">사용 중지됨</h3>
+            <ul className="list">
+              {inactive.map((m) => (
+                <MedicationRow key={m.id} med={m} onClick={() => onOpen(m)} />
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
 
       {undo.log && (
         <div className="toast" role="status">
@@ -85,31 +203,6 @@ function Overview({ onEdit }: { onEdit: (m: Medication | 'new') => void }) {
           </button>
         </div>
       )}
-
-      <section className="section">
-        <div className="section-header">
-          <h2>등록된 항목</h2>
-          <button type="button" className="primary small" onClick={() => onEdit('new')}>
-            + 추가
-          </button>
-        </div>
-        {active.length === 0 && <p className="muted">아직 등록된 항목이 없어요.</p>}
-        <ul className="list">
-          {active.map((m) => (
-            <MedicationRow key={m.id} med={m} onClick={() => onEdit(m)} />
-          ))}
-        </ul>
-        {inactive.length > 0 && (
-          <>
-            <h3 className="muted">사용 중지됨</h3>
-            <ul className="list">
-              {inactive.map((m) => (
-                <MedicationRow key={m.id} med={m} onClick={() => onEdit(m)} />
-              ))}
-            </ul>
-          </>
-        )}
-      </section>
     </div>
   );
 }
@@ -155,75 +248,6 @@ function useUndo() {
       await undoDose(db, log);
     },
   };
-}
-
-interface DoseRowProps {
-  item: DoseItem;
-  nowDt?: string;
-  showDate?: boolean;
-  onRecorded?: (log: DoseLog) => void;
-}
-
-function DoseRow({ item, nowDt, showDate, onRecorded }: DoseRowProps) {
-  const { db } = useDb();
-  const record = async (status: DoseLog['status']) => {
-    const log = await recordDose(db, item.med, item.scheduledAt, status);
-    onRecorded?.(log);
-  };
-  const { med, scheduledAt, log } = item;
-  const overdue = !log && nowDt !== undefined && scheduledAt < nowDt;
-  const when = showDate
-    ? `${formatDate(scheduledAt.slice(0, 10))} ${timePart(scheduledAt)}`
-    : timePart(scheduledAt);
-
-  return (
-    <li className="row">
-      <span className="time">{when}</span>
-      <span className="row-main">
-        <strong>{med.name}</strong>
-        <span className="muted">
-          {log ? `${log.doseSnapshot}${log.unitSnapshot}` : `${med.dose}${med.unit}`}
-          {overdue && ' · 지남'}
-        </span>
-      </span>
-      {log ? (
-        <span className="actions">
-          <span className={log.status === 'taken' ? 'badge done' : 'badge'}>
-            {log.status === 'taken'
-              ? `✓ ${log.takenAt ? timePart(log.takenAt) : '체크함'}`
-              : '건너뜀'}
-          </span>
-          <button
-            type="button"
-            className="ghost small"
-            onClick={() => void undoDose(db, log)}
-            aria-label={`${med.name} ${when} 기록 취소`}
-          >
-            취소
-          </button>
-        </span>
-      ) : (
-        <span className="actions">
-          <button
-            type="button"
-            className="ghost small"
-            onClick={() => void record('skipped')}
-            aria-label={`${med.name} ${when} 건너뛰기`}
-          >
-            건너뛰기
-          </button>
-          <button
-            type="button"
-            className="primary small"
-            onClick={() => void record('taken')}
-            aria-label={`${med.name} ${when} 체크`}
-          >
-            체크
-          </button>
-        </span>
-      )}
-    </li>
-  );
 }
 
 function ReminderBanner({ wantsReminders }: { wantsReminders: boolean }) {

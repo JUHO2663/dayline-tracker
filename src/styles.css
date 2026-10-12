@@ -370,6 +370,117 @@ input.short {
   color: var(--accent-text);
 }
 
+.push-right {
+  margin-left: auto;
+}
+
+.summary {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.small-text {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.tag {
+  margin-left: 0.4rem;
+  padding: 0 0.4rem;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.day-group h3 {
+  margin: 0.5rem 0 0.35rem;
+  font-weight: 500;
+}
+
+.counts {
+  display: flex;
+  gap: 1rem;
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.counts .missed {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.history-periods {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.history-periods summary {
+  cursor: pointer;
+}
+
+.history-periods ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.interval {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.dialog {
+  width: min(420px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+
+.dialog h2 {
+  margin-bottom: 0.5rem;
+}
+
+.dialog p {
+  margin: 0 0 1rem;
+}
+
+.dialog-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  text-align: left;
+}
+
+.choice span {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.choice.primary {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.choice.danger strong {
+  color: var(--danger);
+}
+
 .toast {
   position: fixed;
   left: 16px;
