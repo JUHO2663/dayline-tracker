@@ -1,0 +1,23 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.claude/
+
+# Android build outputs (the android/ project itself is committed once added)
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/release/
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# Never commit personal exports
+dayline-export-*.json

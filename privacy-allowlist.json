@@ -1,0 +1,18 @@
+{
+  "$comment": "Every direct dependency must be listed here with a reason. A new entry needs maintainer review: it must not send data off the device (no analytics, ads, crash reporting, remote fonts, CDNs).",
+  "packages": {
+    "react": "UI",
+    "react-dom": "UI",
+    "idb": "Thin promise wrapper around IndexedDB (web storage). No network code.",
+    "@capacitor/core": "Native bridge runtime",
+    "@capacitor-community/sqlite": "Local SQLite on Android. Stores ciphertext only.",
+    "@capacitor/cli": "Build tooling (dev only)",
+    "@types/react": "Types (dev only)",
+    "@types/react-dom": "Types (dev only)",
+    "@vitejs/plugin-react": "Build tooling (dev only)",
+    "fake-indexeddb": "IndexedDB for tests (dev only)",
+    "typescript": "Build tooling (dev only)",
+    "vite": "Build tooling (dev only)",
+    "vitest": "Test runner (dev only)"
+  }
+}
