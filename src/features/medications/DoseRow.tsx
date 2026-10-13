@@ -65,14 +65,3 @@ export function DoseRow({ when, title, subtitle, tag, log, accessibleName, onRec
   );
 }
 
-/** Groups items by their date, preserving order. */
-export function groupByDate<T>(items: T[], dateOf: (item: T) => string): [string, T[]][] {
-  const groups: [string, T[]][] = [];
-  for (const item of items) {
-    const d = dateOf(item);
-    const last = groups[groups.length - 1];
-    if (last && last[0] === d) last[1].push(item);
-    else groups.push([d, [item]]);
-  }
-  return groups;
-}

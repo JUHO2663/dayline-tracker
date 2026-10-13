@@ -1,8 +1,9 @@
-import type { RecordStore, StoredRecord, WriteOp } from '../recordStore';
+import type { RecordStore, StoredBlob, StoredRecord, WriteOp } from '../recordStore';
 
 /** In-memory store for tests. */
 export class MemoryRecordStore implements RecordStore {
   readonly records = new Map<string, StoredRecord>();
+  readonly blobs = new Map<string, StoredBlob>();
   readonly meta = new Map<string, string>();
 
   private static key(table: string, id: string) {
@@ -31,8 +32,25 @@ export class MemoryRecordStore implements RecordStore {
     }
   }
 
+  async putBlob(id: string, blob: StoredBlob) {
+    this.blobs.set(id, blob);
+  }
+
+  async getBlob(id: string) {
+    return this.blobs.get(id);
+  }
+
+  async deleteBlobs(ids: string[]) {
+    for (const id of ids) this.blobs.delete(id);
+  }
+
+  async listBlobIds() {
+    return [...this.blobs.keys()];
+  }
+
   async wipe() {
     this.records.clear();
+    this.blobs.clear();
     this.meta.clear();
   }
 

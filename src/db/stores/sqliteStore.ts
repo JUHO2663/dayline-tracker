@@ -3,13 +3,20 @@ import {
   SQLiteConnection,
   type SQLiteDBConnection,
 } from '@capacitor-community/sqlite';
+import { Directory, Filesystem } from '@capacitor/filesystem';
 import { base64ToBytes, bytesToBase64 } from '../../crypto/encoding';
-import type { RecordStore, StoredRecord, WriteOp } from '../recordStore';
+import type { RecordStore, StoredBlob, StoredRecord, WriteOp } from '../recordStore';
 
 /**
  * Physical schema. Every row's content is AES-GCM ciphertext (base64) produced by the app,
  * so SQLCipher is not needed. The database file lives in the app's private storage.
+ *
+ * Blobs (photos) are files in app-private internal storage (Directory.Data), never in
+ * shared/media storage, so they don't appear in the gallery. Each file is iv ‖ ciphertext.
  */
+const BLOB_DIR = 'blobs';
+const IV_BYTES = 12;
+const isMissing = (err: unknown) => /not exist|does not exist|no such file/i.test(String(err));
 const DDL = `
 CREATE TABLE IF NOT EXISTS records (
   tbl TEXT NOT NULL,
@@ -94,8 +101,57 @@ export class SqliteRecordStore implements RecordStore {
     );
   }
 
+  async putBlob(id: string, blob: StoredBlob) {
+    const joined = new Uint8Array(IV_BYTES + blob.ct.length);
+    joined.set(blob.iv, 0);
+    joined.set(blob.ct, IV_BYTES);
+    await Filesystem.writeFile({
+      path: `${BLOB_DIR}/${id}`,
+      data: bytesToBase64(joined),
+      directory: Directory.Data,
+      recursive: true,
+    });
+  }
+
+  async getBlob(id: string): Promise<StoredBlob | undefined> {
+    try {
+      const { data } = await Filesystem.readFile({ path: `${BLOB_DIR}/${id}`, directory: Directory.Data });
+      if (typeof data !== 'string') throw new Error('Unexpected blob data');
+      const joined = base64ToBytes(data);
+      return { iv: joined.slice(0, IV_BYTES), ct: joined.slice(IV_BYTES) };
+    } catch (err) {
+      if (isMissing(err)) return undefined;
+      throw err;
+    }
+  }
+
+  async deleteBlobs(ids: string[]) {
+    for (const id of ids) {
+      try {
+        await Filesystem.deleteFile({ path: `${BLOB_DIR}/${id}`, directory: Directory.Data });
+      } catch (err) {
+        if (!isMissing(err)) throw err;
+      }
+    }
+  }
+
+  async listBlobIds() {
+    try {
+      const { files } = await Filesystem.readdir({ path: BLOB_DIR, directory: Directory.Data });
+      return files.map((f) => f.name);
+    } catch (err) {
+      if (isMissing(err)) return [];
+      throw err;
+    }
+  }
+
   async wipe() {
     await this.conn.execute('DELETE FROM records; DELETE FROM meta;');
+    try {
+      await Filesystem.rmdir({ path: BLOB_DIR, directory: Directory.Data, recursive: true });
+    } catch (err) {
+      if (!isMissing(err)) throw err;
+    }
   }
 
   async close() {

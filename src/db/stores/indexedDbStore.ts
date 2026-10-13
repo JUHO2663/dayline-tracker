@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { RecordStore, StoredRecord, WriteOp } from '../recordStore';
+import type { RecordStore, StoredBlob, StoredRecord, WriteOp } from '../recordStore';
 
 interface DaylineIdb extends DBSchema {
   records: {
@@ -7,22 +7,31 @@ interface DaylineIdb extends DBSchema {
     value: StoredRecord;
     indexes: { by_table: string };
   };
+  blobs: {
+    key: string;
+    value: StoredBlob & { id: string };
+  };
   meta: {
     key: string;
     value: { key: string; value: string };
   };
 }
 
-/** Web storage. Rows hold AES-GCM ciphertext only. */
+/** Web storage. Rows and blobs hold AES-GCM ciphertext only. */
 export class IndexedDbRecordStore implements RecordStore {
   private constructor(private readonly db: IDBPDatabase<DaylineIdb>) {}
 
   static async open(name: string): Promise<IndexedDbRecordStore> {
-    const db = await openDB<DaylineIdb>(name, 1, {
-      upgrade(db) {
-        const records = db.createObjectStore('records', { keyPath: ['table', 'id'] });
-        records.createIndex('by_table', 'table');
-        db.createObjectStore('meta', { keyPath: 'key' });
+    const db = await openDB<DaylineIdb>(name, 2, {
+      upgrade(db, oldVersion) {
+        if (oldVersion < 1) {
+          const records = db.createObjectStore('records', { keyPath: ['table', 'id'] });
+          records.createIndex('by_table', 'table');
+          db.createObjectStore('meta', { keyPath: 'key' });
+        }
+        if (oldVersion < 2) {
+          db.createObjectStore('blobs', { keyPath: 'id' });
+        }
       },
     });
     return new IndexedDbRecordStore(db);
@@ -51,9 +60,33 @@ export class IndexedDbRecordStore implements RecordStore {
     ]);
   }
 
+  async putBlob(id: string, blob: StoredBlob) {
+    await this.db.put('blobs', { id, iv: blob.iv, ct: blob.ct });
+  }
+
+  async getBlob(id: string) {
+    const row = await this.db.get('blobs', id);
+    return row && { iv: row.iv, ct: row.ct };
+  }
+
+  async deleteBlobs(ids: string[]) {
+    if (ids.length === 0) return;
+    const tx = this.db.transaction('blobs', 'readwrite');
+    await Promise.all([...ids.map((id) => tx.store.delete(id)), tx.done]);
+  }
+
+  async listBlobIds() {
+    return this.db.getAllKeys('blobs');
+  }
+
   async wipe() {
-    const tx = this.db.transaction(['records', 'meta'], 'readwrite');
-    await Promise.all([tx.objectStore('records').clear(), tx.objectStore('meta').clear(), tx.done]);
+    const tx = this.db.transaction(['records', 'blobs', 'meta'], 'readwrite');
+    await Promise.all([
+      tx.objectStore('records').clear(),
+      tx.objectStore('blobs').clear(),
+      tx.objectStore('meta').clear(),
+      tx.done,
+    ]);
   }
 
   async close() {

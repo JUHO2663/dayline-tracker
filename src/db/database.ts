@@ -1,4 +1,4 @@
-import { openJson, sealJson } from '../crypto/cipher';
+import { openBytes, openJson, sealBytes, sealJson } from '../crypto/cipher';
 import type { RecordStore, WriteOp } from './recordStore';
 import { RELATIONS, type TableName, type TableTypes } from './types';
 
@@ -135,6 +135,31 @@ export class Database {
       (await this.tables.get(table)!).delete(id);
     }
     for (const listener of this.listeners) listener(touched);
+  }
+
+  // ---------- Blobs (photo bytes) ----------
+  // Write the blob before the record that points to it, and delete it after the record,
+  // so a crash can only leave an unreferenced blob — which sweepOrphanBlobs removes.
+
+  async putBlob(id: string, bytes: Uint8Array<ArrayBuffer>): Promise<void> {
+    await this.store.putBlob(id, await sealBytes(this.key, id, bytes));
+  }
+
+  async getBlob(id: string): Promise<Uint8Array<ArrayBuffer> | undefined> {
+    const sealed = await this.store.getBlob(id);
+    return sealed && openBytes(this.key, id, sealed);
+  }
+
+  async deleteBlobs(ids: string[]): Promise<void> {
+    if (ids.length > 0) await this.store.deleteBlobs(ids);
+  }
+
+  /** Deletes blobs that no journal photo refers to. Returns how many were removed. */
+  async sweepOrphanBlobs(): Promise<number> {
+    const referenced = new Set((await this.all('journal_photos')).map((p) => p.id));
+    const orphans = (await this.store.listBlobIds()).filter((id) => !referenced.has(id));
+    await this.deleteBlobs(orphans);
+    return orphans.length;
   }
 
   /** Drops decrypted data from memory. The Database must not be used afterwards. */

@@ -20,6 +20,30 @@ function recordAad(table: string, id: string): Uint8Array<ArrayBuffer> {
   return utf8.encode(`dayline/record/v1\u0000${table}\u0000${id}`);
 }
 
+function blobAad(id: string): Uint8Array<ArrayBuffer> {
+  return utf8.encode(`dayline/blob/v1\u0000${id}`);
+}
+
+/** Encrypts binary data (photos), bound to its blob id. */
+export async function sealBytes(key: CryptoKey, id: string, bytes: Uint8Array<ArrayBuffer>): Promise<Sealed> {
+  const iv = randomBytes(12);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: blobAad(id) }, key, bytes);
+  return { iv, ct: new Uint8Array(ct) };
+}
+
+export async function openBytes(key: CryptoKey, id: string, sealed: Sealed): Promise<Uint8Array<ArrayBuffer>> {
+  try {
+    const plain = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: sealed.iv, additionalData: blobAad(id) },
+      key,
+      sealed.ct,
+    );
+    return new Uint8Array(plain);
+  } catch {
+    throw new CorruptRecordError(`blob/${id}`);
+  }
+}
+
 export async function sealJson(
   key: CryptoKey,
   table: string,

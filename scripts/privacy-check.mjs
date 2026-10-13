@@ -34,6 +34,7 @@ const FORBIDDEN = [
   [/\bsendBeacon\b/, 'navigator.sendBeacon'],
   [/\bRTCPeerConnection\b/, 'WebRTC'],
   [/\bCapacitorHttp\b/, 'CapacitorHttp'],
+  [/\bdownloadFile\b/, 'Filesystem.downloadFile'],
   [/https?:\/\//, 'remote URL'],
 ];
 

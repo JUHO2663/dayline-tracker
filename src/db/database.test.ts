@@ -1,4 +1,5 @@
 import 'fake-indexeddb/auto';
+import { openDB } from 'idb';
 import { describe, expect, it } from 'vitest';
 import { CorruptRecordError } from '../crypto/cipher';
 import { utf8 } from '../crypto/encoding';
@@ -109,6 +110,25 @@ for (const [label, make] of Object.entries(stores)) {
       expect((await db.all('dose_logs')).map((d) => d.medicationId)).toEqual(['m2']);
     });
 
+    it('stores blobs encrypted and sweeps unreferenced ones', async () => {
+      const { store, reopen } = await make();
+      const db = await initialize(store, 'passphrase', IT);
+      const bytes = utf8.encode('PHOTO-BYTES-PLAINTEXT');
+      await db.putBlob('p1', bytes);
+      await db.putBlob('orphan', bytes);
+      await db.put('journal_photos', { id: 'p1', entryId: 'e1', mime: 'image/jpeg', createdAt: NOW });
+
+      const raw = await store.getBlob('p1');
+      expect(raw && containsBytes(raw.ct, bytes)).toBe(false);
+
+      const db2 = await unlock(await reopen(), 'passphrase');
+      expect(await db2.getBlob('p1')).toEqual(bytes);
+      expect(await db2.sweepOrphanBlobs()).toBe(1);
+      expect((await store.listBlobIds()).sort()).toEqual(['p1']);
+      await db2.deleteBlobs(['p1']);
+      expect(await db2.getBlob('p1')).toBeUndefined();
+    });
+
     it('removes lab results when either parent is removed', async () => {
       const { store } = await make();
       const db = await initialize(store, 'passphrase', IT);
@@ -144,6 +164,25 @@ describe('change notifications', () => {
     await db.put('medications', medication('m2', 'B'));
 
     expect(seen).toEqual([['dose_logs', 'medications']]);
+  });
+});
+
+describe('IndexedDB upgrade', () => {
+  it('adds the blob store to a version 1 database and keeps its records', async () => {
+    const name = 'upgrade-test';
+    const v1 = await openDB(name, 1, {
+      upgrade(db) {
+        db.createObjectStore('records', { keyPath: ['table', 'id'] }).createIndex('by_table', 'table');
+        db.createObjectStore('meta', { keyPath: 'key' });
+      },
+    });
+    await v1.put('meta', { key: 'k', value: 'v' });
+    v1.close();
+
+    const store = await IndexedDbRecordStore.open(name);
+    expect(await store.getMeta('k')).toBe('v');
+    await store.putBlob('b', { iv: new Uint8Array(12), ct: new Uint8Array([1]) });
+    expect(await store.listBlobIds()).toEqual(['b']);
   });
 });
 

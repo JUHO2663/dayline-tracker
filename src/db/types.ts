@@ -184,14 +184,22 @@ export interface NotificationLink {
 
 export interface AppSettings {
   id: 'app';
-  /** Shown in every notification. Must stay neutral: no medication or health words. */
+  /** Dose reminders. Must stay neutral: no medication or health words. */
   notificationText: string;
+  /** Day-before appointment reminders. Same rule: no title, place or health words. */
+  appointmentText: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   id: 'app',
   notificationText: '체크할 시간이에요',
+  appointmentText: '내일 일정이 있어요',
 };
+
+/** Stored settings may predate newer fields; fill them from the defaults. */
+export function withDefaults(stored: Partial<AppSettings> | undefined): AppSettings {
+  return { ...DEFAULT_SETTINGS, ...stored, id: 'app' };
+}
 
 // ---------- Table registry ----------
 

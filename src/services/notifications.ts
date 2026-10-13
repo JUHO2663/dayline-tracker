@@ -1,7 +1,8 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { Database } from '../db';
-import { DEFAULT_SETTINGS, type NotificationLink } from '../db/types';
+import { withDefaults, type NotificationLink, type TableName } from '../db/types';
+import { planAppointmentReminders } from '../features/appointments/appointments';
 import { planDoseReminders } from '../features/medications/notificationPlan';
 import { toDate } from '../utils/time';
 
@@ -9,12 +10,16 @@ import { toDate } from '../utils/time';
  * Local notifications only — no push server.
  *
  * Privacy: Android stores scheduled notifications in plaintext (app-private storage)
- * so they survive a reboot. So a notification carries only the neutral text from
- * settings: no medication names, no ids, no `extra` payload. The mapping from
- * notification id to records lives in the encrypted `notification_links` table.
+ * so they survive a reboot. So a notification carries only a neutral text from
+ * settings: no medication names, appointment titles, places, ids or `extra` payload.
+ * The mapping from notification id to records lives in the encrypted
+ * `notification_links` table.
  */
 
 const CHANNEL_ID = 'reminders';
+
+/** Tables whose changes affect which reminders should be scheduled. */
+export const REMINDER_INPUTS: TableName[] = ['medications', 'dose_logs', 'appointments', 'settings'];
 
 export type PermissionState = 'granted' | 'denied' | 'prompt' | 'unsupported';
 
@@ -65,32 +70,44 @@ function allocateId(used: Set<number>): number {
 let queue: Promise<void> = Promise.resolve();
 
 /**
- * Cancels previously scheduled dose reminders and schedules the next ones.
- * Safe to call often; calls are serialized.
+ * Cancels every reminder this app scheduled and schedules the current set
+ * (dose reminders + day-before appointment reminders). Safe to call often;
+ * calls are serialized.
  */
-export function syncDoseReminders(db: Database, now = new Date()): Promise<void> {
+export function syncReminders(db: Database, now = new Date()): Promise<void> {
   const run = async () => {
     if ((await getPermission()) !== 'granted') return;
 
-    const [meds, logs, links, settings] = await Promise.all([
+    const [meds, logs, appts, links, stored] = await Promise.all([
       db.all('medications'),
       db.all('dose_logs'),
+      db.all('appointments'),
       db.all('notification_links'),
       db.get('settings', 'app'),
     ]);
-    const text = (settings ?? DEFAULT_SETTINGS).notificationText;
+    const settings = withDefaults(stored);
 
-    const old = links.filter((l) => l.refType === 'dose');
-    if (old.length > 0) {
-      await LocalNotifications.cancel({
-        notifications: old.map((l) => ({ id: l.notificationId })),
-      });
+    if (links.length > 0) {
+      await LocalNotifications.cancel({ notifications: links.map((l) => ({ id: l.notificationId })) });
     }
 
-    const used = new Set(links.filter((l) => l.refType !== 'dose').map((l) => l.notificationId));
-    const next: NotificationLink[] = planDoseReminders(meds, logs, now).map((at) => {
+    const used = new Set<number>();
+    const next: (NotificationLink & { title: string })[] = [
+      ...planDoseReminders(meds, logs, now).map((at) => ({
+        refType: 'dose' as const,
+        refId: at,
+        fireAt: at,
+        title: settings.notificationText,
+      })),
+      ...planAppointmentReminders(appts, now).map((r) => ({
+        refType: 'appointment' as const,
+        refId: r.appointmentId,
+        fireAt: r.fireAt,
+        title: settings.appointmentText,
+      })),
+    ].map((n) => {
       const notificationId = allocateId(used);
-      return { id: String(notificationId), notificationId, refType: 'dose', refId: at, fireAt: at };
+      return { ...n, id: String(notificationId), notificationId };
     });
 
     if (next.length > 0) {
@@ -98,7 +115,7 @@ export function syncDoseReminders(db: Database, now = new Date()): Promise<void>
       await LocalNotifications.schedule({
         notifications: next.map((n) => ({
           id: n.notificationId,
-          title: text,
+          title: n.title,
           body: '',
           channelId: CHANNEL_ID,
           schedule: { at: toDate(n.fireAt), allowWhileIdle: true },
@@ -107,8 +124,17 @@ export function syncDoseReminders(db: Database, now = new Date()): Promise<void>
     }
 
     await db.batch((b) => {
-      b.remove('notification_links', ...old.map((l) => l.id));
-      b.put('notification_links', ...next);
+      b.remove('notification_links', ...links.map((l) => l.id));
+      b.put(
+        'notification_links',
+        ...next.map((n): NotificationLink => ({
+          id: n.id,
+          notificationId: n.notificationId,
+          refType: n.refType,
+          refId: n.refId,
+          fireAt: n.fireAt,
+        })),
+      );
     });
   };
   const result = queue.then(run, run);

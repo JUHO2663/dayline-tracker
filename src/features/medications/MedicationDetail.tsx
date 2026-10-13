@@ -5,7 +5,8 @@ import { PeriodPicker, resolvePeriod, usePeriod } from '../../components/PeriodP
 import type { Medication } from '../../db/types';
 import { datePart, formatDate, timePart, today } from '../../utils/time';
 import { countByStatus, medicationHistory, recordDose, undoDose, type HistoryStatus } from './doses';
-import { DoseRow, groupByDate } from './DoseRow';
+import { DoseRow } from './DoseRow';
+import { groupBy } from '../../utils/group';
 import { FORM_LABELS } from './MedicationForm';
 import { describeSchedule, MAX_DAYS } from './schedule';
 
@@ -93,7 +94,7 @@ export function MedicationDetail({ med, onBack, onEdit }: Props) {
         {entries.length === 0 ? (
           <p className="muted">이 기간에는 예정된 항목이 없어요.</p>
         ) : (
-          groupByDate(shown, (e) => datePart(e.scheduledAt)).map(([date, items]) => (
+          groupBy(shown, (e) => datePart(e.scheduledAt)).map(([date, items]) => (
             <div key={date} className="day-group">
               <h3 className="muted">{formatDate(date)}</h3>
               <ul className="list">

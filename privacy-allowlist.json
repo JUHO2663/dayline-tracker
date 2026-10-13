@@ -5,6 +5,8 @@
     "react-dom": "UI",
     "idb": "Thin promise wrapper around IndexedDB (web storage). No network code.",
     "@capacitor/core": "Native bridge runtime",
+    "@capacitor/android": "Android runtime for the APK",
+    "@capacitor/filesystem": "Encrypted photo files in app-private storage; camera leftover cleanup. Its deprecated downloadFile() does network I/O and is banned by privacy-check.",
     "@capacitor-community/sqlite": "Local SQLite on Android. Stores ciphertext only.",
     "@capacitor/local-notifications": "On-device scheduled notifications (no push server). Reviewed: no network code in web or Android sources.",
     "recharts": "Lab trend charts. Reviewed: no network code in recharts or its runtime deps (RTK Query's fetch module is never imported).",

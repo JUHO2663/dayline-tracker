@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { openJson, sealJson } from './cipher';
+import { CorruptRecordError, openBytes, openJson, sealBytes, sealJson } from './cipher';
 import { changeSecret, createVault, unlockVault, WrongSecretError } from './vault';
 
 // Low iteration count keeps tests fast; production uses DEFAULT_KDF_ITERATIONS.
@@ -31,6 +31,14 @@ describe('vault', () => {
   it('does not expose the data key', async () => {
     const { key } = await createVault('123456', IT);
     expect(key.extractable).toBe(false);
+  });
+
+  it('seals bytes bound to their id', async () => {
+    const { key } = await createVault('123456', IT);
+    const bytes = new Uint8Array([1, 2, 3, 255]);
+    const sealed = await sealBytes(key, 'a', bytes);
+    await expect(openBytes(key, 'a', sealed)).resolves.toEqual(bytes);
+    await expect(openBytes(key, 'b', sealed)).rejects.toBeInstanceOf(CorruptRecordError);
   });
 
   it('treats Unicode-equivalent secrets as equal (NFKC)', async () => {
