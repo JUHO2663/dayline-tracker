@@ -23,7 +23,7 @@ Runs on Android (Capacitor) and in the browser.*
 | 3 | 검사 기록, 추이 그래프 | ✅ |
 | 4 | 일지(사진 첨부), 병원 일정 | ✅ |
 | 5 | 잠금(생체인증), 내보내기, 전체 삭제 | ⏳ |
-| 6 | Android APK 빌드 | ⏳ |
+| 6 | Android APK 빌드, 일정을 기기 캘린더에 직접 추가(선택) | ⏳ |
 
 ## 개발 시작하기
 
