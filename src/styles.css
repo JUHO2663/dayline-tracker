@@ -653,6 +653,10 @@ input.short {
 
 /* ---------- Appointments ---------- */
 
+.time-input {
+  width: auto;
+}
+
 details.past summary {
   cursor: pointer;
   list-style-position: inside;

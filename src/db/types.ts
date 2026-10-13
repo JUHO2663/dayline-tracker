@@ -158,6 +158,12 @@ export interface JournalPhoto {
 
 export type AppointmentKind = 'visit' | 'test' | 'other';
 
+/** When to be reminded: `daysBefore` the appointment's date (0 = same day), at `time`. */
+export interface AppointmentReminder {
+  daysBefore: 0 | 1 | 2;
+  time: LocalTime;
+}
+
 export interface Appointment {
   id: string;
   title: string;
@@ -165,8 +171,8 @@ export interface Appointment {
   datetime: LocalDateTime;
   location?: string;
   memo?: string;
-  /** Notify the day before. */
-  remind: boolean;
+  /** Absent = no reminder. */
+  reminder?: AppointmentReminder;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -186,14 +192,11 @@ export interface AppSettings {
   id: 'app';
   /** Dose reminders. Must stay neutral: no medication or health words. */
   notificationText: string;
-  /** Day-before appointment reminders. Same rule: no title, place or health words. */
-  appointmentText: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   id: 'app',
   notificationText: '체크할 시간이에요',
-  appointmentText: '내일 일정이 있어요',
 };
 
 /** Stored settings may predate newer fields; fill them from the defaults. */

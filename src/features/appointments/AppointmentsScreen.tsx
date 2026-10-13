@@ -2,9 +2,28 @@ import { useState } from 'react';
 import { useDb } from '../../app/DbContext';
 import { useNow, useTable } from '../../app/hooks';
 import { ReminderBanner } from '../../components/ReminderBanner';
-import { withDefaults, type Appointment, type AppointmentKind } from '../../db/types';
-import { combine, datePart, daysBetween, formatDate, isValidTime, timePart, today } from '../../utils/time';
-import { KIND_LABELS, REMIND_AT, splitAppointments } from './appointments';
+import type { Appointment, AppointmentKind, AppointmentReminder } from '../../db/types';
+import {
+  combine,
+  datePart,
+  daysBetween,
+  formatDate,
+  isValidTime,
+  timePart,
+  toLocalDateTime,
+  today,
+} from '../../utils/time';
+import {
+  defaultReminder,
+  DEFAULT_REMINDER,
+  describeReminder,
+  KIND_LABELS,
+  REMINDER_DAY_LABELS,
+  REMINDER_TEXTS,
+  reminderTime,
+  splitAppointments,
+  validateReminder,
+} from './appointments';
 
 export function AppointmentsScreen() {
   const appts = useTable('appointments');
@@ -12,10 +31,12 @@ export function AppointmentsScreen() {
 
   if (!appts) return null;
   if (editing) {
+    const appointment = editing === 'new' ? undefined : appts.find((a) => a.id === editing);
     return (
       <AppointmentForm
         key={editing}
-        appointment={editing === 'new' ? undefined : appts.find((a) => a.id === editing)}
+        appointment={appointment}
+        initialReminder={appointment ? appointment.reminder : defaultReminder(appts)}
         onDone={() => setEditing(null)}
       />
     );
@@ -49,7 +70,7 @@ function AppointmentList({ appts, onOpen, onAdd }: ListProps) {
             {formatDate(datePart(a.datetime), true)} {timePart(a.datetime)} · {KIND_LABELS[a.kind]}
             {a.location && ` · ${a.location}`}
           </span>
-          {showRelative && a.remind && <span className="muted small-text">전날 알림</span>}
+          {showRelative && a.reminder && <span className="muted small-text">{describeReminder(a.reminder)}</span>}
         </span>
         {showRelative && <span className="tag">{relativeDay(daysBetween(todayDate, datePart(a.datetime)))}</span>}
         <span aria-hidden>›</span>
@@ -59,7 +80,7 @@ function AppointmentList({ appts, onOpen, onAdd }: ListProps) {
 
   return (
     <div className="screen">
-      <ReminderBanner wantsReminders={upcoming.some((a) => a.remind)} />
+      <ReminderBanner wantsReminders={upcoming.some((a) => a.reminder)} />
 
       <button type="button" className="primary" onClick={onAdd}>
         + 일정 추가
@@ -88,38 +109,49 @@ function AppointmentList({ appts, onOpen, onAdd }: ListProps) {
 
 interface FormProps {
   appointment?: Appointment;
+  initialReminder: AppointmentReminder | undefined;
   onDone: () => void;
 }
 
-function AppointmentForm({ appointment: appt, onDone }: FormProps) {
+type DaysChoice = AppointmentReminder['daysBefore'] | 'off';
+
+function AppointmentForm({ appointment: appt, initialReminder, onDone }: FormProps) {
   const { db } = useDb();
-  const settings = useTable('settings');
+  const now = useNow();
   const [title, setTitle] = useState(appt?.title ?? '');
   const [kind, setKind] = useState<AppointmentKind>(appt?.kind ?? 'visit');
   const [date, setDate] = useState(appt ? datePart(appt.datetime) : today());
   const [time, setTime] = useState(appt ? timePart(appt.datetime) : '10:00');
   const [location, setLocation] = useState(appt?.location ?? '');
   const [memo, setMemo] = useState(appt?.memo ?? '');
-  const [remind, setRemind] = useState(appt?.remind ?? true);
+  const [days, setDays] = useState<DaysChoice>(initialReminder?.daysBefore ?? 'off');
+  const [remindAt, setRemindAt] = useState(initialReminder?.time ?? DEFAULT_REMINDER.time);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const reminderText = withDefaults(settings?.[0]).appointmentText;
+
+  const datetime = /^\d{4}-\d{2}-\d{2}$/.test(date) && isValidTime(time) ? combine(date, time) : null;
+  const reminder: AppointmentReminder | undefined =
+    days === 'off' || !isValidTime(remindAt) ? undefined : { daysBefore: days, time: remindAt };
+  const fireAt = datetime && reminder ? reminderTime(datetime, reminder) : null;
 
   async function save() {
     if (!title.trim()) return setError('제목을 넣어 주세요.');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return setError('날짜를 넣어 주세요.');
-    if (!isValidTime(time)) return setError('시간을 넣어 주세요.');
+    if (!datetime) return setError('날짜와 시간을 넣어 주세요.');
+    if (days !== 'off' && !reminder) return setError('알림 시각을 넣어 주세요.');
+    const reminderProblem = reminder && validateReminder(datetime, reminder);
+    if (reminderProblem) return setError(reminderProblem);
+
     setSaving(true);
     const ts = new Date().toISOString();
     const next: Appointment = {
       id: appt?.id ?? crypto.randomUUID(),
       title: title.trim(),
       kind,
-      datetime: combine(date, time),
-      remind,
+      datetime,
       createdAt: appt?.createdAt ?? ts,
       updatedAt: ts,
     };
+    if (reminder) next.reminder = reminder;
     if (location.trim()) next.location = location.trim();
     if (memo.trim()) next.memo = memo.trim();
     try {
@@ -183,15 +215,37 @@ function AppointmentForm({ appointment: appt, onDone }: FormProps) {
         <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} maxLength={1000} />
       </label>
 
-      <label className="inline">
-        <input type="checkbox" checked={remind} onChange={(e) => setRemind(e.target.checked)} />
-        전날 알림 받기
-      </label>
-      {remind && (
-        <p className="muted small-text">
-          전날 {REMIND_AT}에 &lsquo;{reminderText}&rsquo;라고만 알려 드려요. 제목이나 장소는 알림에 나오지 않아요.
-        </p>
-      )}
+      <fieldset className="field">
+        <legend>알림</legend>
+        <div className="chips">
+          {(['off', 0, 1, 2] as const).map((d) => (
+            <button key={d} type="button" className="chip" aria-pressed={days === d} onClick={() => setDays(d)}>
+              {d === 'off' ? '안 받기' : REMINDER_DAY_LABELS[d]}
+            </button>
+          ))}
+        </div>
+        {days !== 'off' && (
+          <>
+            <label className="inline">
+              <input
+                type="time"
+                className="time-input"
+                value={remindAt}
+                aria-label="알림 시각"
+                onChange={(e) => setRemindAt(e.target.value)}
+              />
+              에 알림
+            </label>
+            {fireAt && (
+              <p className="muted small-text">
+                {formatDate(datePart(fireAt), true)} {timePart(fireAt)}에 &lsquo;{REMINDER_TEXTS[days]}&rsquo;라고만
+                알려 드려요. 제목이나 장소는 알림에 나오지 않아요.
+                {fireAt <= toLocalDateTime(now) && ' 이미 지난 시각이라 이번에는 알림이 오지 않아요.'}
+              </p>
+            )}
+          </>
+        )}
+      </fieldset>
 
       {error && (
         <p className="error" role="alert">

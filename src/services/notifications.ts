@@ -103,7 +103,7 @@ export function syncReminders(db: Database, now = new Date()): Promise<void> {
         refType: 'appointment' as const,
         refId: r.appointmentId,
         fireAt: r.fireAt,
-        title: settings.appointmentText,
+        title: r.text,
       })),
     ].map((n) => {
       const notificationId = allocateId(used);
